@@ -2,20 +2,29 @@ http://localhost:8080/hello
 
 ###
 
-http://localhost:8080/api/points/12345/balance
+http://localhost:8080/api/points/account1/balance
 
 ###
 
-POST http://localhost:8080/api/points/12345/earn
+POST http://localhost:8080/api/points/account1/earn
 Content-Type: application/json
 
 {
-  "points": 50
+  "purchaseId": "purchase1"
 }
 
 ###
 
-POST http://localhost:8080/api/points/12345/redeem
+POST http://localhost:8080/api/points/account1/earn
+Content-Type: application/json
+
+{
+  "purchaseId": "purchase2"
+}
+
+### 
+
+POST http://localhost:8080/api/points/account1/redeem
 Content-Type: application/json
 
 {
