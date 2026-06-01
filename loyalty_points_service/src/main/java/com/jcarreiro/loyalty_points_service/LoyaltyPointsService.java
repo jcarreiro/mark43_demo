@@ -13,11 +13,16 @@ import java.time.Instant;
 
 @Service
 public class LoyaltyPointsService {
-    // Map from purchaseId to purchase metadata. This is used to allow users
-    // to earn points from past purchases, and to prevent users from earning
-    // points multiple times from the same purchase. In a real application,
-    // this could be stored in a database or retrieved from another service.
+    // Map from purchaseId to purchase metadata. This is used to allow users to
+    // earn points from past purchases, and to prevent users from earning points
+    // multiple times from the same purchase. In a real application, this could
+    // be stored in a database or retrieved from another service.
     private final Map<String, PurchaseMetadata> purchaseMap;
+
+    // Map from rewardId to the reward metadata. This is used to allow users to
+    // redeem points for rewards. In a real application, this could be stored in
+    // a database or retrieved from another service.
+    private final Map<String, RewardMetadata> rewardMap;
 
     // Log of all points transactions. In a real application, this would likely
     // be stored in a database.
@@ -25,11 +30,13 @@ public class LoyaltyPointsService {
 
     @Autowired
     public LoyaltyPointsService() {
-        this(defaultPurchaseMap(), new ArrayList<>());
+        this(defaultPurchaseMap(), defaultRewardMap(), new ArrayList<>());
     }
 
-    LoyaltyPointsService(Map<String, PurchaseMetadata> purchaseMap, List<PointsTransaction> transactionLog) {
+    LoyaltyPointsService(Map<String, PurchaseMetadata> purchaseMap, Map<String, RewardMetadata> rewardMap,
+            List<PointsTransaction> transactionLog) {
         this.purchaseMap = purchaseMap;
+        this.rewardMap = rewardMap;
         this.transactionLog = transactionLog;
     }
 
@@ -50,6 +57,18 @@ public class LoyaltyPointsService {
                         "account2",
                         100.0f,
                         Instant.parse("2026-06-01T00:00:00Z")));
+    }
+
+    private static Map<String, RewardMetadata> defaultRewardMap() {
+        return Map.of(
+                "free-coffee", new RewardMetadata(
+                        "free-coffee",
+                        "Free Coffee",
+                        100),
+                "10-percent-off", new RewardMetadata(
+                        "10-percent-off",
+                        "10% Off Next Purchase",
+                        200));
     }
 
     /// Retrieves the current points balance for a customer's account.
@@ -108,7 +127,8 @@ public class LoyaltyPointsService {
         // Make sure the user has not already earned points from this purchaseId.
         for (PointsTransaction transaction : transactionLog) {
             if (transaction.purchaseId() != null && transaction.purchaseId().equals(purchaseId)) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Points have already been earned from this purchase");
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Points have already been earned from this purchase");
             }
         }
 
@@ -138,8 +158,28 @@ public class LoyaltyPointsService {
     /// @param rewardId  the ID of the reward for which the customer wants to
     ///                  redeem points}
     public void redeemPoints(String accountId, String rewardId) {
-        // TODO(jcarreiro): add a reward catalog
-        // TODO(jcarreiro): Implement actual logic to redeem points from the given
-        // accountId
+        // TODO(jcarreiro): check accountId is valid
+        
+        // Look up the reward metadata for the given rewardId.
+        RewardMetadata rewardMetadata = rewardMap.get(rewardId);
+        if (rewardMetadata == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, String.format("Invalid reward ID: %s", rewardId));
+        }
+
+        // Check if the customer has enough points to redeem the reward.
+        int currentBalance = getPointsBalance(accountId);
+        if (currentBalance < rewardMetadata.pointCost()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Not enough points to redeem this reward");
+        }
+
+        // Add new transaction to the transaction log to record the redemption.
+        PointsTransaction transaction = new PointsTransaction(
+                /* transactionId= */ String.format("txn%d", transactionLog.size() + 1),
+                /* accountId= */ accountId,
+                /* transactionType= */ PointsTransaction.TransactionType.REDEEM,
+                /* purchaseId= */ null,
+                /* points= */ -rewardMetadata.pointCost(),
+                /* timestamp= */ Instant.now());
+        transactionLog.add(transaction);
     }
 }

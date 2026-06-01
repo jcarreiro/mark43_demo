@@ -22,11 +22,29 @@ Content-Type: application/json
   "purchaseId": "purchase2"
 }
 
+###
+
+POST http://localhost:8080/api/points/account2/earn
+Content-Type: application/json
+
+{
+  "purchaseId": "purchase3"
+}
+
 ### 
 
 POST http://localhost:8080/api/points/account1/redeem
 Content-Type: application/json
 
 {
-  "points": 30
+  "rewardId": "free-coffee"
+}
+
+### 
+
+POST http://localhost:8080/api/points/account2/redeem
+Content-Type: application/json
+
+{
+  "rewardId": "free-coffee"
 }
