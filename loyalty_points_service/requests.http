@@ -1,3 +1,23 @@
 http://localhost:8080/hello
 
 ###
+
+http://localhost:8080/api/points/12345/balance
+
+###
+
+POST http://localhost:8080/api/points/12345/earn
+Content-Type: application/json
+
+{
+  "points": 50
+}
+
+###
+
+POST http://localhost:8080/api/points/12345/redeem
+Content-Type: application/json
+
+{
+  "points": 30
+}
