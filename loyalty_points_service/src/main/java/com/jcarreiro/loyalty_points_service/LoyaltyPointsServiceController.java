@@ -9,11 +9,15 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/points")
 public class LoyaltyPointsServiceController {
+    private final LoyaltyPointsService loyaltyPointsService;
+
+    public LoyaltyPointsServiceController(LoyaltyPointsService loyaltyPointsService) {
+        this.loyaltyPointsService = loyaltyPointsService;
+    }
     @GetMapping("/{accountId}/balance")
     public PointsBalanceResponse getPointsBalance(@PathVariable String accountId) {
-        // TODO(jcarreiro): Implement actual logic to retrieve points balance for the given accountId
-        // TODO(jcarreiro): validate accountId in service layer and return appropriate error response if accountId is invalid
-        return new PointsBalanceResponse(accountId, 100);
+        int balance = loyaltyPointsService.getPointsBalance(accountId);
+        return new PointsBalanceResponse(accountId, balance);
     }
 
     @PostMapping("/{accountId}/earn")
