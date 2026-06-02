@@ -2,38 +2,38 @@ http://localhost:8080/hello
 
 ###
 
-http://localhost:8080/api/points/account1/balance
+http://localhost:8080/api/points/account-100/balance
 
 ###
 
-POST http://localhost:8080/api/points/account1/earn
+POST http://localhost:8080/api/points/account-100/earn
 Content-Type: application/json
 
 {
-  "purchaseId": "purchase1"
+  "purchaseId": "order-123"
 }
 
 ###
 
-POST http://localhost:8080/api/points/account1/earn
+POST http://localhost:8080/api/points/account-100/earn
 Content-Type: application/json
 
 {
-  "purchaseId": "purchase2"
+  "purchaseId": "order-124"
 }
 
 ###
 
-POST http://localhost:8080/api/points/account2/earn
+POST http://localhost:8080/api/points/account-101/earn
 Content-Type: application/json
 
 {
-  "purchaseId": "purchase3"
+  "purchaseId": "order-125"
 }
 
 ### 
 
-POST http://localhost:8080/api/points/account1/redeem
+POST http://localhost:8080/api/points/account-100/redeem
 Content-Type: application/json
 
 {
@@ -42,7 +42,7 @@ Content-Type: application/json
 
 ### 
 
-POST http://localhost:8080/api/points/account2/redeem
+POST http://localhost:8080/api/points/account-101/redeem
 Content-Type: application/json
 
 {
