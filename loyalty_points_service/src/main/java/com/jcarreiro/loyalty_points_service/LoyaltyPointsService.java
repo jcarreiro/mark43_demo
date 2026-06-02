@@ -14,38 +14,15 @@ import java.time.Instant;
 @Service
 public class LoyaltyPointsService {
     private final PurchaseRepository purchaseRepository;
+    private final RewardRepository rewardRepository;
+    private final PointsTransactionRepository pointsTransactionRepository;
+    private final Duration pointsValidDuration = Duration.ofDays(365);
 
-    // Map from rewardId to the reward metadata. This is used to allow users to
-    // redeem points for rewards. In a real application, this could be stored in
-    // a database or retrieved from another service.
-    private final Map<String, RewardMetadata> rewardMap;
-
-    // Log of all points transactions. In a real application, this would likely
-    // be stored in a database.
-    private final List<PointsTransaction> transactionLog;
-
-    @Autowired
-    public LoyaltyPointsService(PurchaseRepository purchaseRepository) {
-        this(purchaseRepository, defaultRewardMap(), new ArrayList<>());
-    }
-
-    LoyaltyPointsService(PurchaseRepository purchaseRepository, Map<String, RewardMetadata> rewardMap,
-            List<PointsTransaction> transactionLog) {
+    public LoyaltyPointsService(PurchaseRepository purchaseRepository, RewardRepository rewardRepository,
+            PointsTransactionRepository pointsTransactionRepository) {
         this.purchaseRepository = purchaseRepository;
-        this.rewardMap = rewardMap;
-        this.transactionLog = transactionLog;
-    }
-
-    private static Map<String, RewardMetadata> defaultRewardMap() {
-        return Map.of(
-                "free-coffee", new RewardMetadata(
-                        "free-coffee",
-                        "Free Coffee",
-                        100),
-                "10-percent-off", new RewardMetadata(
-                        "10-percent-off",
-                        "10% Off Next Purchase",
-                        200));
+        this.rewardRepository = rewardRepository;
+        this.pointsTransactionRepository = pointsTransactionRepository;
     }
 
     /// Retrieves the current points balance for a customer's account.
@@ -65,22 +42,11 @@ public class LoyaltyPointsService {
         // to optimize this by maintaining a separate data structure that tracks
         // the current points balance for each accountId, rather than iterating
         // through the entire transaction log each time.
-        int balance = 0;
-        for (PointsTransaction transaction : transactionLog) {
-            if (transaction.accountId().equals(accountId)) {
-                if (transaction.transactionType() == PointsTransaction.TransactionType.EARN) {
-                    // Check if the points from this transaction have expired.
-                    // For this demo, we assume that points expire 1 year after
-                    // they were earned.
-                    Duration oneYear = Duration.ofDays(365);
-                    Instant expiryTime = transaction.timestamp().plus(oneYear);
-                    if (Instant.now().isAfter(expiryTime)) {
-                        // Points have expired, so we skip this transaction.
-                        continue;
-                    }
-                }
-                balance += transaction.points();
-            }
+        Instant expiryTime = Instant.now().minus(pointsValidDuration);
+        var balance = pointsTransactionRepository.getPointBalance(accountId, expiryTime);
+        if (balance == null) {
+            // There are no transactions for this account.
+            return 0;
         }
         return balance;
     }
@@ -102,12 +68,23 @@ public class LoyaltyPointsService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid purchase ID");
         }
 
+        // If the purchase is too old, then the user can no longer earn the
+        // points from it. Note that we also filter expired points when getting
+        // the balance, so this is really just an optimization.
+        final var expiryTime = Instant.now().minus(pointsValidDuration);
+        if (purchase.getTimestamp().isBefore(expiryTime)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Purchase is too old, points can no longer be earned");
+        }
+
         // Make sure the user has not already earned points from this purchaseId.
-        for (PointsTransaction transaction : transactionLog) {
-            if (transaction.purchaseId() != null && transaction.purchaseId().equals(purchaseId)) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Points have already been earned from this purchase");
-            }
+        //
+        // TODO(jcarreiro): JPA doesn't know purchaseId is a FK so we get a list
+        // here.
+        var pointsTransaction = pointsTransactionRepository.findByPurchaseId(purchaseId);
+        if (!pointsTransaction.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Points have already been earned from this purchase");
         }
 
         // Calculate the number of points to earn from the purchase. For this
@@ -117,15 +94,16 @@ public class LoyaltyPointsService {
         // service.
         int pointsEarned = (int) purchase.getDollarAmount();
 
-        // Add a new transaction to the transaction log.
-        PointsTransaction transaction = new PointsTransaction(
-                /* transactionId= */ String.format("txn%d", transactionLog.size() + 1),
-                /* accountId= */ accountId,
-                /* transactionType= */ PointsTransaction.TransactionType.EARN,
-                /* purchaseId= */ purchaseId,
-                /* points= */ pointsEarned,
-                /* timestamp= */ purchase.getTimestamp());
-        transactionLog.add(transaction);
+        // Add a new transaction to the transaction log to record earning the
+        // points.
+        PointsTransaction tx = new PointsTransaction(
+                null,
+                PointsTransaction.TransactionType.EARN,
+                accountId,
+                purchaseId,
+                pointsEarned,
+                purchase.getTimestamp());
+        pointsTransactionRepository.save(tx);
     }
 
     /// Redeem points from a customer's account.
@@ -139,26 +117,26 @@ public class LoyaltyPointsService {
         // TODO(jcarreiro): check accountId is valid
 
         // Look up the reward metadata for the given rewardId.
-        RewardMetadata rewardMetadata = rewardMap.get(rewardId);
-        if (rewardMetadata == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, String.format("Invalid reward ID: %s", rewardId));
-        }
+        Reward reward = rewardRepository.findById(rewardId).orElseThrow(
+                () -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        String.format("Invalid reward ID: %s", rewardId)));
 
         // Check if the customer has enough points to redeem the reward.
         int currentBalance = getPointsBalance(accountId);
-        if (currentBalance < rewardMetadata.pointCost()) {
+        int pointCost = reward.getPointCost();
+        if (currentBalance < pointCost) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     String.format("Customer does not have enough points to redeem reward: %s", rewardId));
         }
 
         // Add new transaction to the transaction log to record the redemption.
-        PointsTransaction transaction = new PointsTransaction(
-                /* transactionId= */ String.format("txn%d", transactionLog.size() + 1),
-                /* accountId= */ accountId,
-                /* transactionType= */ PointsTransaction.TransactionType.REDEEM,
-                /* purchaseId= */ null,
-                /* points= */ -rewardMetadata.pointCost(),
-                /* timestamp= */ Instant.now());
-        transactionLog.add(transaction);
+        PointsTransaction tx = new PointsTransaction(
+                null,
+                PointsTransaction.TransactionType.REDEEM,
+                accountId,
+                null,
+                -pointCost,
+                Instant.now());
+        pointsTransactionRepository.save(tx);
     }
 }

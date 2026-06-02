@@ -2,20 +2,24 @@ package com.jcarreiro.loyalty_points_service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
+
+import com.jcarreiro.loyalty_points_service.PointsTransaction.TransactionType;
 
 // TODO(jcarreiro): these tests use the real clock right now; we should switch
 // to using a mock clock so that the results of the expiry time tests are 
@@ -25,120 +29,168 @@ class LoyaltyPointsServiceTests {
         @Mock
         private PurchaseRepository purchaseRepository;
 
+        @Mock
+        private RewardRepository rewardRepository;
+
+        @Mock
+        private PointsTransactionRepository pointsTransactionRepository;
+
         @Test
         void getPointsBalance_returnsZeroWhenNoTransactions() {
-                LoyaltyPointsService service = new LoyaltyPointsService(purchaseRepository, Map.of(), List.of());
-                int balance = service.getPointsBalance("account-1");
+                final var accountId = "account-1";
+                when(pointsTransactionRepository.getPointBalance(eq(accountId), any(Instant.class))).thenReturn(null);
+                LoyaltyPointsService service = new LoyaltyPointsService(purchaseRepository,
+                                rewardRepository, pointsTransactionRepository);
+                int balance = service.getPointsBalance(accountId);
                 assertEquals(0, balance);
         }
 
         @Test
         void getPointsBalance_returnsCorrectBalance() {
-                List<PointsTransaction> transactionLog = List.of(
-                                // This transaction is expired, so it should not contribute to
-                                // the balance.
-                                new PointsTransaction(
-                                                "txn1",
-                                                "account-1",
-                                                PointsTransaction.TransactionType.EARN,
-                                                "purchase-1",
-                                                50,
-                                                Instant.parse("2025-05-31T00:00:00Z")),
-                                new PointsTransaction(
-                                                "txn2",
-                                                "account-1",
-                                                PointsTransaction.TransactionType.EARN,
-                                                "purchase-1",
-                                                100,
-                                                Instant.parse("2026-06-01T00:00:00Z")),
-                                new PointsTransaction(
-                                                "txn3",
-                                                "account-1",
-                                                PointsTransaction.TransactionType.REDEEM,
-                                                null,
-                                                -30,
-                                                Instant.parse("2026-06-01T00:00:00Z")));
-                LoyaltyPointsService service = new LoyaltyPointsService(purchaseRepository, Map.of(), transactionLog);
+                final String accountId = "account-1";
+                // TODO(jcarreiro): mock the clock so we can verify the correct
+                // expiry time is passed in to the mock
+                final Integer expectedBalance = 70;
+                when(pointsTransactionRepository.getPointBalance(eq(accountId), any(Instant.class)))
+                                .thenReturn(expectedBalance);
+                LoyaltyPointsService service = new LoyaltyPointsService(purchaseRepository,
+                                rewardRepository, pointsTransactionRepository);
                 int balance = service.getPointsBalance("account-1");
                 assertEquals(70, balance);
         }
 
         @Test
         void earnPoints_throwsWhenSamePurchaseIdIsUsedTwice() {
-                Purchase purchase = new Purchase(
-                                "purchase-1",
-                                "account-1",
+                final var accountId = "account-1";
+                final var purchaseId = "purchase-1";
+                final var purchase = new Purchase(
+                                purchaseId,
+                                accountId,
                                 50.0f,
                                 Instant.parse("2026-06-01T00:00:00Z"));
-                when(purchaseRepository.findById("purchase-1")).thenReturn(Optional.of(purchase));
-                List<PointsTransaction> transactionLog = new ArrayList<>();
+                when(purchaseRepository.findById(purchaseId)).thenReturn(Optional.of(purchase));
+                final var tx = new PointsTransaction(
+                                123L,
+                                TransactionType.EARN,
+                                accountId,
+                                purchaseId,
+                                100,
+                                Instant.now());
+                when(pointsTransactionRepository.findByPurchaseId(purchaseId)).thenReturn(List.of(tx));
                 LoyaltyPointsService service = new LoyaltyPointsService(
                                 purchaseRepository,
-                                Map.of(),
-                                transactionLog);
-                service.earnPoints("account-1", "purchase-1");
+                                rewardRepository,
+                                pointsTransactionRepository);
                 ResponseStatusException exception = assertThrows(
                                 ResponseStatusException.class,
-                                () -> service.earnPoints("account-1", "purchase-1"));
+                                () -> service.earnPoints(accountId, purchaseId));
                 assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
                 assertEquals("Points have already been earned from this purchase", exception.getReason());
         }
 
         @Test
-        void redeemPoints_throwsIfRewardIdIsInvalid() {
+        void earnPoints_throwsWhenPurchaseWasForDifferentAccount() {
+                final var accountId = "account-1";
+                final var otherAccountId = "account-2";
+                final var purchaseId = "purchase-1";
+                final var purchase = new Purchase(
+                                purchaseId,
+                                otherAccountId,
+                                50.0f,
+                                Instant.parse("2026-06-01T00:00:00Z"));
+                when(purchaseRepository.findById(purchaseId)).thenReturn(Optional.of(purchase));
                 LoyaltyPointsService service = new LoyaltyPointsService(
                                 purchaseRepository,
-                                Map.of(
-                                                "valid-reward-id", new RewardMetadata(
-                                                                "valid-reward-id",
-                                                                "Valid Reward",
-                                                                100)),
-                                List.of());
+                                rewardRepository,
+                                pointsTransactionRepository);
                 ResponseStatusException exception = assertThrows(
                                 ResponseStatusException.class,
-                                () -> service.redeemPoints("account-1", "invalid-reward-id"));
+                                () -> service.earnPoints(accountId, purchaseId));
                 assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
-                assertEquals("Invalid reward ID: invalid-reward-id", exception.getReason());
+                assertEquals("Invalid purchase ID", exception.getReason());
+        }
+
+        @Test
+        void earnPoints_recordsTransactionForValidPurchase() {
+                final var accountId = "account-1";
+                final var purchaseId = "purchase-1";
+                final var timestamp = Instant.parse("2026-06-01T00:00:00Z");
+                final var purchase = new Purchase(
+                                purchaseId,
+                                accountId,
+                                50.0f,
+                                timestamp);
+                when(purchaseRepository.findById(purchaseId)).thenReturn(Optional.of(purchase));
+                LoyaltyPointsService service = new LoyaltyPointsService(
+                                purchaseRepository,
+                                rewardRepository,
+                                pointsTransactionRepository);
+                service.earnPoints(accountId, purchaseId);
+                ArgumentCaptor<PointsTransaction> captor = ArgumentCaptor.forClass(PointsTransaction.class);
+                verify(pointsTransactionRepository).save(captor.capture());
+                PointsTransaction captured = captor.getValue();
+                assertEquals(TransactionType.EARN, captured.getTransactionType());
+                assertEquals(purchaseId, captured.getPurchaseId());
+                assertEquals(accountId, captured.getAccountId());
+                assertEquals(50, captured.getPoints());
+                assertEquals(timestamp, captured.getTimestamp());
+        }
+
+        @Test
+        void redeemPoints_throwsIfRewardIdIsInvalid() {
+                final var accountId = "account-1";
+                final var rewardId = "invalid-reward-id";
+                LoyaltyPointsService service = new LoyaltyPointsService(
+                                purchaseRepository,
+                                rewardRepository,
+                                pointsTransactionRepository);
+                ResponseStatusException exception = assertThrows(
+                                ResponseStatusException.class,
+                                () -> service.redeemPoints(accountId, rewardId));
+                assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+                assertEquals(String.format("Invalid reward ID: %s", rewardId), exception.getReason());
         }
 
         @Test
         void redeemPoints_throwsIfCustomerDoesNotHaveEnoughPoints() {
+                final var accountId = "account-1";
+                final var rewardId = "expensive-reward-id";
+                final var reward = new Reward(rewardId, "Expensive Reward", 1000);
+                when(rewardRepository.findById(rewardId)).thenReturn(Optional.of(reward));
+                when(pointsTransactionRepository.getPointBalance(eq(accountId), any(Instant.class))).thenReturn(10);
                 LoyaltyPointsService service = new LoyaltyPointsService(
                                 purchaseRepository,
-                                Map.of(
-                                                "expensive-reward-id", new RewardMetadata(
-                                                                "expensive-reward-id",
-                                                                "Expensive Reward",
-                                                                1000)),
-                                List.of());
+                                rewardRepository,
+                                pointsTransactionRepository);
                 ResponseStatusException exception = assertThrows(
                                 ResponseStatusException.class,
-                                () -> service.redeemPoints("account-1", "expensive-reward-id"));
+                                () -> service.redeemPoints(accountId, rewardId));
                 assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
-                assertEquals("Customer does not have enough points to redeem reward: expensive-reward-id",
+                assertEquals(String.format("Customer does not have enough points to redeem reward: %s", rewardId),
                                 exception.getReason());
         }
 
         @Test
-        void redeemPoints_redeemsPointsSuccessfully() {
-                List<PointsTransaction> transactionLog = new ArrayList<>();
-                transactionLog.add(new PointsTransaction(
-                                "txn1",
-                                "account-1",
-                                PointsTransaction.TransactionType.EARN,
-                                "purchase-1",
-                                500,
-                                Instant.parse("2026-06-01T00:00:00Z")));
+        void redeemPoints_recordsTransactionIfRewardRedeemedSuccessfully() {
+                final var accountId = "account-1";
+                final var rewardId = "reward-id";
+                final var pointCost = 100;
+                final var reward = new Reward(rewardId, "Reward", pointCost);
+                when(rewardRepository.findById(rewardId)).thenReturn(Optional.of(reward));
+                when(pointsTransactionRepository.getPointBalance(eq(accountId), any(Instant.class)))
+                                .thenReturn(pointCost);
                 LoyaltyPointsService service = new LoyaltyPointsService(
                                 purchaseRepository,
-                                Map.of(
-                                                "reward-id", new RewardMetadata(
-                                                                "reward-id",
-                                                                "Reward",
-                                                                100)),
-                                transactionLog);
-                service.redeemPoints("account-1", "reward-id");
-                int balance = service.getPointsBalance("account-1");
-                assertEquals(400, balance);
+                                rewardRepository,
+                                pointsTransactionRepository);
+                service.redeemPoints("account-1", rewardId);
+                ArgumentCaptor<PointsTransaction> captor = ArgumentCaptor.forClass(PointsTransaction.class);
+                verify(pointsTransactionRepository).save(captor.capture());
+                // TODO(jcarreiro): mock the clock so we can check the timestamp
+                // of the transaction here
+                PointsTransaction captured = captor.getValue();
+                assertEquals(TransactionType.REDEEM, captured.getTransactionType());
+                assertEquals(accountId, captured.getAccountId());
+                assertEquals(pointCost, -captured.getPoints());
         }
 }

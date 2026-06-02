@@ -12,7 +12,7 @@ public class Purchase {
     private String purchaseId;
     private String accountId;
     private float dollarAmount;
-    private Instant timestamp; 
+    private Instant timestamp;
 
     protected Purchase() {
         // Default constructor required by JPA.
