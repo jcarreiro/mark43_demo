@@ -13,3 +13,11 @@ VALUES
   ('free-coffee', 'Get a free coffee!', 100),
   ('10-pct-off', 'Get 10% off your next order!', 200),
   ('expensive-reward', 'Get a really cool reward!', 1000);
+
+
+-- Loyalty tiers
+INSERT INTO loyalty_tiers (tier_name, threshold_dollars)
+VALUES
+    ('Silver', 100.00),
+    ('Gold', 500.00),
+    ('Platinum', 1000.00);

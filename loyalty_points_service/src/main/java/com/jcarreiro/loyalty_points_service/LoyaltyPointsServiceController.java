@@ -20,8 +20,9 @@ public class LoyaltyPointsServiceController {
 
     @GetMapping("/{accountId}/balance")
     public PointsBalanceResponse getPointsBalance(@PathVariable String accountId) {
-        int balance = loyaltyPointsService.getPointsBalance(accountId);
-        return new PointsBalanceResponse(accountId, balance);
+        final var balance = loyaltyPointsService.getPointsBalance(accountId);
+        final var tierName = loyaltyPointsService.getLoyaltyTier(accountId);
+        return new PointsBalanceResponse(accountId, balance, tierName);
     }
 
     @PostMapping("/{accountId}/earn")

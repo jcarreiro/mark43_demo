@@ -11,7 +11,7 @@ public class Purchase {
     @Id
     private String purchaseId;
     private String accountId;
-    private float dollarAmount;
+    private Float dollarAmount;
     private Instant timestamp;
 
     protected Purchase() {
@@ -29,7 +29,7 @@ public class Purchase {
         return accountId;
     }
 
-    public float getDollarAmount() {
+    public Float getDollarAmount() {
         return dollarAmount;
     }
 

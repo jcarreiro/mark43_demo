@@ -35,12 +35,15 @@ class LoyaltyPointsServiceTests {
         @Mock
         private PointsTransactionRepository pointsTransactionRepository;
 
+        @Mock
+        private LoyaltyTierRepository loyaltyTierRepository;
+
         @Test
         void getPointsBalance_returnsZeroWhenNoTransactions() {
                 final var accountId = "account-1";
                 when(pointsTransactionRepository.getPointBalance(eq(accountId), any(Instant.class))).thenReturn(null);
                 LoyaltyPointsService service = new LoyaltyPointsService(purchaseRepository,
-                                rewardRepository, pointsTransactionRepository);
+                                rewardRepository, pointsTransactionRepository, loyaltyTierRepository);
                 int balance = service.getPointsBalance(accountId);
                 assertEquals(0, balance);
         }
@@ -54,9 +57,31 @@ class LoyaltyPointsServiceTests {
                 when(pointsTransactionRepository.getPointBalance(eq(accountId), any(Instant.class)))
                                 .thenReturn(expectedBalance);
                 LoyaltyPointsService service = new LoyaltyPointsService(purchaseRepository,
-                                rewardRepository, pointsTransactionRepository);
+                                rewardRepository, pointsTransactionRepository, loyaltyTierRepository);
                 int balance = service.getPointsBalance("account-1");
                 assertEquals(70, balance);
+        }
+
+        @Test
+        void getLoyaltyTier_returnsEmptyStringIfNoTierMatches() {
+                final var accountId = "account-1";
+                LoyaltyPointsService service = new LoyaltyPointsService(purchaseRepository,
+                                rewardRepository, pointsTransactionRepository, loyaltyTierRepository);
+                final var tier = service.getLoyaltyTier(accountId);
+                assertEquals("", tier);
+        }
+
+        @Test
+        void getLoyaltyTier_returnsCorrectTierName() {
+                final var accountId = "account-1";
+                final var expectedTierName = "Gold";
+                final var tier = new LoyaltyTier(null, expectedTierName, 100.00f);
+                when(loyaltyTierRepository.findTierForAccountSince(eq(accountId), any(Instant.class)))
+                                .thenReturn(Optional.of(tier));
+                LoyaltyPointsService service = new LoyaltyPointsService(purchaseRepository,
+                                rewardRepository, pointsTransactionRepository, loyaltyTierRepository);
+                final var actualTierName = service.getLoyaltyTier(accountId);
+                assertEquals(expectedTierName, actualTierName);
         }
 
         @Test
@@ -80,7 +105,8 @@ class LoyaltyPointsServiceTests {
                 LoyaltyPointsService service = new LoyaltyPointsService(
                                 purchaseRepository,
                                 rewardRepository,
-                                pointsTransactionRepository);
+                                pointsTransactionRepository,
+                                loyaltyTierRepository);
                 ResponseStatusException exception = assertThrows(
                                 ResponseStatusException.class,
                                 () -> service.earnPoints(accountId, purchaseId));
@@ -102,7 +128,8 @@ class LoyaltyPointsServiceTests {
                 LoyaltyPointsService service = new LoyaltyPointsService(
                                 purchaseRepository,
                                 rewardRepository,
-                                pointsTransactionRepository);
+                                pointsTransactionRepository,
+                                loyaltyTierRepository);
                 ResponseStatusException exception = assertThrows(
                                 ResponseStatusException.class,
                                 () -> service.earnPoints(accountId, purchaseId));
@@ -124,7 +151,8 @@ class LoyaltyPointsServiceTests {
                 LoyaltyPointsService service = new LoyaltyPointsService(
                                 purchaseRepository,
                                 rewardRepository,
-                                pointsTransactionRepository);
+                                pointsTransactionRepository,
+                                loyaltyTierRepository);
                 service.earnPoints(accountId, purchaseId);
                 ArgumentCaptor<PointsTransaction> captor = ArgumentCaptor.forClass(PointsTransaction.class);
                 verify(pointsTransactionRepository).save(captor.capture());
@@ -143,7 +171,8 @@ class LoyaltyPointsServiceTests {
                 LoyaltyPointsService service = new LoyaltyPointsService(
                                 purchaseRepository,
                                 rewardRepository,
-                                pointsTransactionRepository);
+                                pointsTransactionRepository,
+                                loyaltyTierRepository);
                 ResponseStatusException exception = assertThrows(
                                 ResponseStatusException.class,
                                 () -> service.redeemPoints(accountId, rewardId));
@@ -161,7 +190,8 @@ class LoyaltyPointsServiceTests {
                 LoyaltyPointsService service = new LoyaltyPointsService(
                                 purchaseRepository,
                                 rewardRepository,
-                                pointsTransactionRepository);
+                                pointsTransactionRepository,
+                                loyaltyTierRepository);
                 ResponseStatusException exception = assertThrows(
                                 ResponseStatusException.class,
                                 () -> service.redeemPoints(accountId, rewardId));
@@ -182,7 +212,8 @@ class LoyaltyPointsServiceTests {
                 LoyaltyPointsService service = new LoyaltyPointsService(
                                 purchaseRepository,
                                 rewardRepository,
-                                pointsTransactionRepository);
+                                pointsTransactionRepository,
+                                loyaltyTierRepository);
                 service.redeemPoints("account-1", rewardId);
                 ArgumentCaptor<PointsTransaction> captor = ArgumentCaptor.forClass(PointsTransaction.class);
                 verify(pointsTransactionRepository).save(captor.capture());

@@ -16,13 +16,16 @@ public class LoyaltyPointsService {
     private final PurchaseRepository purchaseRepository;
     private final RewardRepository rewardRepository;
     private final PointsTransactionRepository pointsTransactionRepository;
+    private final LoyaltyTierRepository loyaltyTierRepository;
     private final Duration pointsValidDuration = Duration.ofDays(365);
+    private final Duration trailingSpendDuration = Duration.ofDays(365);
 
     public LoyaltyPointsService(PurchaseRepository purchaseRepository, RewardRepository rewardRepository,
-            PointsTransactionRepository pointsTransactionRepository) {
+            PointsTransactionRepository pointsTransactionRepository, LoyaltyTierRepository loyaltyTierRepository) {
         this.purchaseRepository = purchaseRepository;
         this.rewardRepository = rewardRepository;
         this.pointsTransactionRepository = pointsTransactionRepository;
+        this.loyaltyTierRepository = loyaltyTierRepository;
     }
 
     /// Retrieves the current points balance for a customer's account.
@@ -42,13 +45,23 @@ public class LoyaltyPointsService {
         // to optimize this by maintaining a separate data structure that tracks
         // the current points balance for each accountId, rather than iterating
         // through the entire transaction log each time.
-        Instant expiryTime = Instant.now().minus(pointsValidDuration);
-        var balance = pointsTransactionRepository.getPointBalance(accountId, expiryTime);
+        final var expiryTime = Instant.now().minus(pointsValidDuration);
+        final var balance = pointsTransactionRepository.getPointBalance(accountId, expiryTime);
         if (balance == null) {
             // There are no transactions for this account.
             return 0;
         }
         return balance;
+    }
+
+    /// Gets the loyalty tier for the customer.
+    /// 
+    /// The loyalty tier is based on the value of the customer's total spend over the
+    /// past 12 months.
+    String getLoyaltyTier(String accountId) {
+        final var cutoff = Instant.now().minus(trailingSpendDuration);
+        final var tier = loyaltyTierRepository.findTierForAccountSince(accountId, cutoff);
+        return tier.map(LoyaltyTier::getTierName).orElse("");
     }
 
     /// Add points to a customer's account.
@@ -92,7 +105,7 @@ public class LoyaltyPointsService {
         // spent, but for a real application, this may be more complex and could
         // involve looking up the conversion rate from a database or another
         // service.
-        int pointsEarned = (int) purchase.getDollarAmount();
+        int pointsEarned = purchase.getDollarAmount().intValue();
 
         // Add a new transaction to the transaction log to record earning the
         // points.
