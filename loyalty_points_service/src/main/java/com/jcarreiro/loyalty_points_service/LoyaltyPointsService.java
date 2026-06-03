@@ -1,29 +1,28 @@
 package com.jcarreiro.loyalty_points_service;
 
-import org.springframework.beans.factory.annotation.Autowired;
+import java.time.Duration;
+import java.time.Instant;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.time.Duration;
-import java.time.Instant;
 
 @Service
 public class LoyaltyPointsService {
     private final PurchaseRepository purchaseRepository;
     private final RewardRepository rewardRepository;
+    private final PointsLotRepository pointsLotRepository;
     private final PointsTransactionRepository pointsTransactionRepository;
     private final LoyaltyTierRepository loyaltyTierRepository;
     private final Duration pointsValidDuration = Duration.ofDays(365);
     private final Duration trailingSpendDuration = Duration.ofDays(365);
 
     public LoyaltyPointsService(PurchaseRepository purchaseRepository, RewardRepository rewardRepository,
-            PointsTransactionRepository pointsTransactionRepository, LoyaltyTierRepository loyaltyTierRepository) {
+            PointsLotRepository pointsLotRepository, PointsTransactionRepository pointsTransactionRepository,
+            LoyaltyTierRepository loyaltyTierRepository) {
         this.purchaseRepository = purchaseRepository;
         this.rewardRepository = rewardRepository;
+        this.pointsLotRepository = pointsLotRepository;
         this.pointsTransactionRepository = pointsTransactionRepository;
         this.loyaltyTierRepository = loyaltyTierRepository;
     }
@@ -32,7 +31,7 @@ public class LoyaltyPointsService {
     /// 
     /// @param accountId the ID of the customer's account
     /// @return the current points balance for the customer's account
-    public int getPointsBalance(String accountId) {
+    public int getPointsBalanceForAccount(String accountId) {
         // TODO(jcarreiro): check accountId is valid
 
         // Get the current points balance for the given accountId by iterating
@@ -45,8 +44,8 @@ public class LoyaltyPointsService {
         // to optimize this by maintaining a separate data structure that tracks
         // the current points balance for each accountId, rather than iterating
         // through the entire transaction log each time.
-        final var expiryTime = Instant.now().minus(pointsValidDuration);
-        final var balance = pointsTransactionRepository.getPointBalance(accountId, expiryTime);
+        final var expiryTime = Instant.now();
+        final var balance = pointsLotRepository.getPointsBalanceForAccount(accountId, expiryTime);
         if (balance == null) {
             // There are no transactions for this account.
             return 0;
@@ -58,7 +57,7 @@ public class LoyaltyPointsService {
     /// 
     /// The loyalty tier is based on the value of the customer's total spend over the
     /// past 12 months.
-    String getLoyaltyTier(String accountId) {
+    String getLoyaltyTierForAccount(String accountId) {
         final var cutoff = Instant.now().minus(trailingSpendDuration);
         final var tier = loyaltyTierRepository.findTierForAccountSince(accountId, cutoff);
         return tier.map(LoyaltyTier::getTierName).orElse("");
@@ -81,15 +80,6 @@ public class LoyaltyPointsService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid purchase ID");
         }
 
-        // If the purchase is too old, then the user can no longer earn the
-        // points from it. Note that we also filter expired points when getting
-        // the balance, so this is really just an optimization.
-        final var expiryTime = Instant.now().minus(pointsValidDuration);
-        if (purchase.getTimestamp().isBefore(expiryTime)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Purchase is too old, points can no longer be earned");
-        }
-
         // Make sure the user has not already earned points from this purchaseId.
         //
         // TODO(jcarreiro): JPA doesn't know purchaseId is a FK so we get a list
@@ -106,6 +96,15 @@ public class LoyaltyPointsService {
         // involve looking up the conversion rate from a database or another
         // service.
         int pointsEarned = purchase.getDollarAmount().intValue();
+
+        // Create a new lot for the new points.
+        final var expiryTime = purchase.getTimestamp().plus(pointsValidDuration);
+        PointsLot pl = new PointsLot(
+                null,
+                accountId,
+                pointsEarned,
+                expiryTime);
+        pointsLotRepository.save(pl);
 
         // Add a new transaction to the transaction log to record earning the
         // points.
@@ -135,12 +134,31 @@ public class LoyaltyPointsService {
                         String.format("Invalid reward ID: %s", rewardId)));
 
         // Check if the customer has enough points to redeem the reward.
-        int currentBalance = getPointsBalance(accountId);
-        int pointCost = reward.getPointCost();
+        final var currentBalance = getPointsBalanceForAccount(accountId);
+        final var pointCost = reward.getPointCost();
         if (currentBalance < pointCost) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     String.format("Customer does not have enough points to redeem reward: %s", rewardId));
         }
+
+        // Spend points from lots, in FIFO order.
+        int pointsNeeded = pointCost;
+        var lots = pointsLotRepository.findSpendableLotsForAccount(accountId, Instant.now());
+        var iterator = lots.iterator();
+        while (iterator.hasNext() && pointsNeeded > 0) {
+            // Spend either all the points left in the next lot, or the amount
+            // remaining from the reward cost, whichever is least.
+            var pl = iterator.next();
+            int pointsInLot = pl.getPointsRemaining();
+            int pointsSpent = Math.min(pointsInLot, pointsNeeded);
+            pl.setPointsRemaining(pointsInLot - pointsSpent);
+            pointsLotRepository.save(pl);
+            pointsNeeded -= pointsSpent;
+        }
+
+        // We should have had enough lots to pay the reward cost, since we
+        // check the balance up front.
+        assert pointsNeeded == 0 : "Not enough points for reward!";
 
         // Add new transaction to the transaction log to record the redemption.
         PointsTransaction tx = new PointsTransaction(

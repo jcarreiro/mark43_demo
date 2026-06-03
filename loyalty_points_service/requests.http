@@ -10,6 +10,15 @@ POST http://localhost:8080/api/points/account-100/earn
 Content-Type: application/json
 
 {
+  "purchaseId": "order-122"
+}
+
+###
+
+POST http://localhost:8080/api/points/account-100/earn
+Content-Type: application/json
+
+{
   "purchaseId": "order-123"
 }
 

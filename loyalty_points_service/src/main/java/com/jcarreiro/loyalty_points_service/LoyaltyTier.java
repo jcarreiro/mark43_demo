@@ -2,8 +2,6 @@ package com.jcarreiro.loyalty_points_service;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
@@ -11,10 +9,6 @@ import jakarta.persistence.Table;
 @Table(name = "loyalty_tiers")
 public class LoyaltyTier {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Column(nullable = false, unique = true)
     private String tierName;
 
     @Column(nullable = false)
@@ -24,14 +18,9 @@ public class LoyaltyTier {
         // Default constructor is required by JPA.
     }
 
-    public LoyaltyTier(Long id, String tierName, Float thresholdDollars) {
-        this.id = id;
+    public LoyaltyTier(String tierName, Float thresholdDollars) {
         this.tierName = tierName;
         this.thresholdDollars = thresholdDollars;
-    }
-
-    public Long getId() {
-        return id;
     }
 
     public String getTierName() {

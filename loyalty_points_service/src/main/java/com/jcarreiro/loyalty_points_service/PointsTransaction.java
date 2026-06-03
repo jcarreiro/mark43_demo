@@ -20,7 +20,7 @@ public class PointsTransaction {
 
     // The transaction ID.
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.AUTO)
     Long transactionId;
 
     // The type of the transaction.

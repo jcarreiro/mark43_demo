@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -33,6 +34,9 @@ class LoyaltyPointsServiceTests {
         private RewardRepository rewardRepository;
 
         @Mock
+        private PointsLotRepository pointsLotRepository;
+
+        @Mock
         private PointsTransactionRepository pointsTransactionRepository;
 
         @Mock
@@ -41,10 +45,12 @@ class LoyaltyPointsServiceTests {
         @Test
         void getPointsBalance_returnsZeroWhenNoTransactions() {
                 final var accountId = "account-1";
-                when(pointsTransactionRepository.getPointBalance(eq(accountId), any(Instant.class))).thenReturn(null);
+                when(pointsLotRepository.getPointsBalanceForAccount(eq(accountId), any(Instant.class)))
+                                .thenReturn(null);
                 LoyaltyPointsService service = new LoyaltyPointsService(purchaseRepository,
-                                rewardRepository, pointsTransactionRepository, loyaltyTierRepository);
-                int balance = service.getPointsBalance(accountId);
+                                rewardRepository, pointsLotRepository, pointsTransactionRepository,
+                                loyaltyTierRepository);
+                int balance = service.getPointsBalanceForAccount(accountId);
                 assertEquals(0, balance);
         }
 
@@ -54,11 +60,12 @@ class LoyaltyPointsServiceTests {
                 // TODO(jcarreiro): mock the clock so we can verify the correct
                 // expiry time is passed in to the mock
                 final Integer expectedBalance = 70;
-                when(pointsTransactionRepository.getPointBalance(eq(accountId), any(Instant.class)))
+                when(pointsLotRepository.getPointsBalanceForAccount(eq(accountId), any(Instant.class)))
                                 .thenReturn(expectedBalance);
                 LoyaltyPointsService service = new LoyaltyPointsService(purchaseRepository,
-                                rewardRepository, pointsTransactionRepository, loyaltyTierRepository);
-                int balance = service.getPointsBalance("account-1");
+                                rewardRepository, pointsLotRepository, pointsTransactionRepository,
+                                loyaltyTierRepository);
+                int balance = service.getPointsBalanceForAccount("account-1");
                 assertEquals(70, balance);
         }
 
@@ -66,8 +73,9 @@ class LoyaltyPointsServiceTests {
         void getLoyaltyTier_returnsEmptyStringIfNoTierMatches() {
                 final var accountId = "account-1";
                 LoyaltyPointsService service = new LoyaltyPointsService(purchaseRepository,
-                                rewardRepository, pointsTransactionRepository, loyaltyTierRepository);
-                final var tier = service.getLoyaltyTier(accountId);
+                                rewardRepository, pointsLotRepository, pointsTransactionRepository,
+                                loyaltyTierRepository);
+                final var tier = service.getLoyaltyTierForAccount(accountId);
                 assertEquals("", tier);
         }
 
@@ -75,12 +83,13 @@ class LoyaltyPointsServiceTests {
         void getLoyaltyTier_returnsCorrectTierName() {
                 final var accountId = "account-1";
                 final var expectedTierName = "Gold";
-                final var tier = new LoyaltyTier(null, expectedTierName, 100.00f);
+                final var tier = new LoyaltyTier(expectedTierName, 100.00f);
                 when(loyaltyTierRepository.findTierForAccountSince(eq(accountId), any(Instant.class)))
                                 .thenReturn(Optional.of(tier));
                 LoyaltyPointsService service = new LoyaltyPointsService(purchaseRepository,
-                                rewardRepository, pointsTransactionRepository, loyaltyTierRepository);
-                final var actualTierName = service.getLoyaltyTier(accountId);
+                                rewardRepository, pointsLotRepository, pointsTransactionRepository,
+                                loyaltyTierRepository);
+                final var actualTierName = service.getLoyaltyTierForAccount(accountId);
                 assertEquals(expectedTierName, actualTierName);
         }
 
@@ -105,6 +114,7 @@ class LoyaltyPointsServiceTests {
                 LoyaltyPointsService service = new LoyaltyPointsService(
                                 purchaseRepository,
                                 rewardRepository,
+                                pointsLotRepository,
                                 pointsTransactionRepository,
                                 loyaltyTierRepository);
                 ResponseStatusException exception = assertThrows(
@@ -128,6 +138,7 @@ class LoyaltyPointsServiceTests {
                 LoyaltyPointsService service = new LoyaltyPointsService(
                                 purchaseRepository,
                                 rewardRepository,
+                                pointsLotRepository,
                                 pointsTransactionRepository,
                                 loyaltyTierRepository);
                 ResponseStatusException exception = assertThrows(
@@ -151,17 +162,25 @@ class LoyaltyPointsServiceTests {
                 LoyaltyPointsService service = new LoyaltyPointsService(
                                 purchaseRepository,
                                 rewardRepository,
+                                pointsLotRepository,
                                 pointsTransactionRepository,
                                 loyaltyTierRepository);
                 service.earnPoints(accountId, purchaseId);
-                ArgumentCaptor<PointsTransaction> captor = ArgumentCaptor.forClass(PointsTransaction.class);
-                verify(pointsTransactionRepository).save(captor.capture());
-                PointsTransaction captured = captor.getValue();
-                assertEquals(TransactionType.EARN, captured.getTransactionType());
-                assertEquals(purchaseId, captured.getPurchaseId());
-                assertEquals(accountId, captured.getAccountId());
-                assertEquals(50, captured.getPoints());
-                assertEquals(timestamp, captured.getTimestamp());
+                ArgumentCaptor<PointsLot> plCaptor = ArgumentCaptor.forClass(PointsLot.class);
+                verify(pointsLotRepository).save(plCaptor.capture());
+                PointsLot pl = plCaptor.getValue();
+                // TODO(jcarreiro): mock the clock so we can assert on expiry time
+                assertEquals(accountId, pl.getAccountId());
+                assertEquals(50, pl.getPointsRemaining());
+
+                ArgumentCaptor<PointsTransaction> txCaptor = ArgumentCaptor.forClass(PointsTransaction.class);
+                verify(pointsTransactionRepository).save(txCaptor.capture());
+                PointsTransaction tx = txCaptor.getValue();
+                assertEquals(TransactionType.EARN, tx.getTransactionType());
+                assertEquals(purchaseId, tx.getPurchaseId());
+                assertEquals(accountId, tx.getAccountId());
+                assertEquals(50, tx.getPoints());
+                assertEquals(timestamp, tx.getTimestamp());
         }
 
         @Test
@@ -171,6 +190,7 @@ class LoyaltyPointsServiceTests {
                 LoyaltyPointsService service = new LoyaltyPointsService(
                                 purchaseRepository,
                                 rewardRepository,
+                                pointsLotRepository,
                                 pointsTransactionRepository,
                                 loyaltyTierRepository);
                 ResponseStatusException exception = assertThrows(
@@ -186,10 +206,11 @@ class LoyaltyPointsServiceTests {
                 final var rewardId = "expensive-reward-id";
                 final var reward = new Reward(rewardId, "Expensive Reward", 1000);
                 when(rewardRepository.findById(rewardId)).thenReturn(Optional.of(reward));
-                when(pointsTransactionRepository.getPointBalance(eq(accountId), any(Instant.class))).thenReturn(10);
+                when(pointsLotRepository.getPointsBalanceForAccount(eq(accountId), any(Instant.class))).thenReturn(10);
                 LoyaltyPointsService service = new LoyaltyPointsService(
                                 purchaseRepository,
                                 rewardRepository,
+                                pointsLotRepository,
                                 pointsTransactionRepository,
                                 loyaltyTierRepository);
                 ResponseStatusException exception = assertThrows(
@@ -207,18 +228,23 @@ class LoyaltyPointsServiceTests {
                 final var pointCost = 100;
                 final var reward = new Reward(rewardId, "Reward", pointCost);
                 when(rewardRepository.findById(rewardId)).thenReturn(Optional.of(reward));
-                when(pointsTransactionRepository.getPointBalance(eq(accountId), any(Instant.class)))
+                when(pointsLotRepository.getPointsBalanceForAccount(eq(accountId), any(Instant.class)))
                                 .thenReturn(pointCost);
+                final var expiryTime = Instant.now().plus(Duration.ofDays(1));
+                var pl = new PointsLot(1L, accountId, 200, expiryTime);
+                when(pointsLotRepository.findSpendableLotsForAccount(eq(accountId), any(Instant.class)))
+                                .thenReturn(List.of(pl));
                 LoyaltyPointsService service = new LoyaltyPointsService(
                                 purchaseRepository,
                                 rewardRepository,
+                                pointsLotRepository,
                                 pointsTransactionRepository,
                                 loyaltyTierRepository);
                 service.redeemPoints("account-1", rewardId);
+                assertEquals(100, pl.getPointsRemaining());
                 ArgumentCaptor<PointsTransaction> captor = ArgumentCaptor.forClass(PointsTransaction.class);
                 verify(pointsTransactionRepository).save(captor.capture());
                 // TODO(jcarreiro): mock the clock so we can check the timestamp
-                // of the transaction here
                 PointsTransaction captured = captor.getValue();
                 assertEquals(TransactionType.REDEEM, captured.getTransactionType());
                 assertEquals(accountId, captured.getAccountId());
