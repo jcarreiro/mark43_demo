@@ -78,7 +78,7 @@ public class LoyaltyPointsService {
     /// 
     /// The loyalty tier is based on the value of the customer's total spend over the
     /// past 12 months.
-    String getLoyaltyTierForAccount(String accountId) {
+    public String getLoyaltyTierForAccount(String accountId) {
         final var cutoff = Instant.now().minus(trailingSpendDuration);
         final var tier = loyaltyTierRepository.findTierForAccountSince(accountId, cutoff);
         return tier.map(LoyaltyTier::getTierName).orElse("");
