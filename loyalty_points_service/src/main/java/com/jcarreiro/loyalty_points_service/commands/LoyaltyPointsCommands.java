@@ -5,7 +5,7 @@ import org.springframework.shell.standard.ShellComponent;
 import org.springframework.shell.standard.ShellMethod;
 import org.springframework.shell.standard.ShellOption;
 
-import com.jcarreiro.loyalty_points_service.LoyaltyPointsService;
+import com.jcarreiro.loyalty_points_service.service.LoyaltyPointsService;
 
 @ShellComponent
 public class LoyaltyPointsCommands {

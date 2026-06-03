@@ -1,4 +1,4 @@
-package com.jcarreiro.loyalty_points_service;
+package com.jcarreiro.loyalty_points_service.repository;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -6,6 +6,8 @@ import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.NativeQuery;
 import org.springframework.data.repository.query.Param;
+
+import com.jcarreiro.loyalty_points_service.entity.LoyaltyTier;
 
 public interface LoyaltyTierRepository extends JpaRepository<LoyaltyTier, String> {
         @NativeQuery(value = "SELECT lt.* FROM loyalty_tiers lt " +

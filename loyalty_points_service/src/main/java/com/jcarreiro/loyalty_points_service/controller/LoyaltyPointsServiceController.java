@@ -1,4 +1,4 @@
-package com.jcarreiro.loyalty_points_service;
+package com.jcarreiro.loyalty_points_service.controller;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -8,6 +8,12 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
+
+import com.jcarreiro.loyalty_points_service.dto.ClawbackPointsRequest;
+import com.jcarreiro.loyalty_points_service.dto.EarnPointsRequest;
+import com.jcarreiro.loyalty_points_service.dto.PointsBalanceResponse;
+import com.jcarreiro.loyalty_points_service.dto.RedeemPointsRequest;
+import com.jcarreiro.loyalty_points_service.service.LoyaltyPointsService;
 
 @RestController
 @RequestMapping("/api/points")

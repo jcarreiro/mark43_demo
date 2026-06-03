@@ -1,4 +1,4 @@
-package com.jcarreiro.loyalty_points_service;
+package com.jcarreiro.loyalty_points_service.entity;
 
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;

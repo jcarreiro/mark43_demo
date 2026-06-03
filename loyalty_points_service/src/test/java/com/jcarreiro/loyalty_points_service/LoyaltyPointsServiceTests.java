@@ -4,9 +4,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.never;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -21,9 +21,18 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
-import com.jcarreiro.loyalty_points_service.PointsTransaction.TransactionType;
-
-import net.bytebuddy.asm.Advice.Argument;
+import com.jcarreiro.loyalty_points_service.entity.LoyaltyTier;
+import com.jcarreiro.loyalty_points_service.entity.PointsLot;
+import com.jcarreiro.loyalty_points_service.entity.PointsTransaction;
+import com.jcarreiro.loyalty_points_service.entity.PointsTransaction.TransactionType;
+import com.jcarreiro.loyalty_points_service.entity.Purchase;
+import com.jcarreiro.loyalty_points_service.entity.Reward;
+import com.jcarreiro.loyalty_points_service.repository.LoyaltyTierRepository;
+import com.jcarreiro.loyalty_points_service.repository.PointsLotRepository;
+import com.jcarreiro.loyalty_points_service.repository.PointsTransactionRepository;
+import com.jcarreiro.loyalty_points_service.repository.PurchaseRepository;
+import com.jcarreiro.loyalty_points_service.repository.RewardRepository;
+import com.jcarreiro.loyalty_points_service.service.LoyaltyPointsService;
 
 // TODO(jcarreiro): these tests use the real clock right now; we should switch
 // to using a mock clock so that the results of the expiry time tests are 

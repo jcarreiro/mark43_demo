@@ -1,4 +1,4 @@
-package com.jcarreiro.loyalty_points_service;
+package com.jcarreiro.loyalty_points_service.service;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -7,7 +7,17 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
-import com.jcarreiro.loyalty_points_service.PointsTransaction.TransactionType;
+import com.jcarreiro.loyalty_points_service.entity.LoyaltyTier;
+import com.jcarreiro.loyalty_points_service.entity.PointsLot;
+import com.jcarreiro.loyalty_points_service.entity.PointsTransaction;
+import com.jcarreiro.loyalty_points_service.entity.Purchase;
+import com.jcarreiro.loyalty_points_service.entity.Reward;
+import com.jcarreiro.loyalty_points_service.entity.PointsTransaction.TransactionType;
+import com.jcarreiro.loyalty_points_service.repository.LoyaltyTierRepository;
+import com.jcarreiro.loyalty_points_service.repository.PointsLotRepository;
+import com.jcarreiro.loyalty_points_service.repository.PointsTransactionRepository;
+import com.jcarreiro.loyalty_points_service.repository.PurchaseRepository;
+import com.jcarreiro.loyalty_points_service.repository.RewardRepository;
 
 @Service
 public class LoyaltyPointsService {

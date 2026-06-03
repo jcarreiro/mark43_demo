@@ -1,4 +1,4 @@
-package com.jcarreiro.loyalty_points_service;
+package com.jcarreiro.loyalty_points_service.entity;
 
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -63,27 +63,27 @@ public class PointsTransaction {
         this.timestamp = timestamp;
     }
 
-    Long getTransactionId() {
+    public Long getTransactionId() {
         return transactionId;
     }
 
-    TransactionType getTransactionType() {
+    public TransactionType getTransactionType() {
         return transactionType;
     }
 
-    String getAccountId() {
+    public String getAccountId() {
         return accountId;
     }
 
-    String getPurchaseId() {
+    public String getPurchaseId() {
         return purchaseId;
     }
 
-    Integer getPoints() {
+    public Integer getPoints() {
         return points;
     }
 
-    Instant getTimestamp() {
+    public Instant getTimestamp() {
         return timestamp;
     }
 }
