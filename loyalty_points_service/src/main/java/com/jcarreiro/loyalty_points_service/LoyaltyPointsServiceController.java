@@ -40,4 +40,13 @@ public class LoyaltyPointsServiceController {
         }
         loyaltyPointsService.redeemPoints(accountId, request.rewardId());
     }
+
+    @PostMapping("/{accountId}/clawback")
+    public void clawbackPoints(@PathVariable String accountId, @RequestBody ClawbackPointsRequest request) {
+        if (request.purchaseId() == null || request.purchaseId().isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "purchaseId is required");
+        }
+        loyaltyPointsService.clawbackPoints(accountId, request.purchaseId());
+
+    }
 }

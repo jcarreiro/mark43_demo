@@ -57,3 +57,12 @@ Content-Type: application/json
 {
   "rewardId": "free-coffee"
 }
+
+###
+
+POST http://localhost:8080/api/points/account-100/clawback
+Content-Type: application/json
+
+{
+  "purchaseId": "order-124"
+}

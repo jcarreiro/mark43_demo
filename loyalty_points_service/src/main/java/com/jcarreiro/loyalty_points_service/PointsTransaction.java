@@ -15,7 +15,8 @@ import java.time.Instant;
 public class PointsTransaction {
     public enum TransactionType {
         EARN,
-        REDEEM
+        REDEEM,
+        CLAWBACK,
     }
 
     // The transaction ID.
@@ -44,7 +45,8 @@ public class PointsTransaction {
     // - If this is an EARN transaction, this is the timestamp of the original
     // purchase.
     //
-    // - If this is a REDEEM transaction, the timestamp of the redemption.
+    // - If this is a REDEEM or CLAWBACK transaction, the timestamp of the
+    // redemption or clawback.
     Instant timestamp;
 
     public PointsTransaction() {

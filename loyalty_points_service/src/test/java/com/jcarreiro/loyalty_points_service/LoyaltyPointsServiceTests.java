@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.never;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -21,6 +22,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.jcarreiro.loyalty_points_service.PointsTransaction.TransactionType;
+
+import net.bytebuddy.asm.Advice.Argument;
 
 // TODO(jcarreiro): these tests use the real clock right now; we should switch
 // to using a mock clock so that the results of the expiry time tests are 
@@ -241,6 +244,7 @@ class LoyaltyPointsServiceTests {
                                 pointsTransactionRepository,
                                 loyaltyTierRepository);
                 service.redeemPoints("account-1", rewardId);
+                verify(pointsLotRepository).save(pl);
                 assertEquals(100, pl.getPointsRemaining());
                 ArgumentCaptor<PointsTransaction> captor = ArgumentCaptor.forClass(PointsTransaction.class);
                 verify(pointsTransactionRepository).save(captor.capture());
@@ -249,5 +253,159 @@ class LoyaltyPointsServiceTests {
                 assertEquals(TransactionType.REDEEM, captured.getTransactionType());
                 assertEquals(accountId, captured.getAccountId());
                 assertEquals(pointCost, -captured.getPoints());
+        }
+
+        @Test
+        void clawbackPoints_throwsIfPurchaseIdIsInvalid() {
+                final var accountId = "account-1";
+                final var purchaseId = "invalid-purchase-id";
+                LoyaltyPointsService service = new LoyaltyPointsService(
+                                purchaseRepository,
+                                rewardRepository,
+                                pointsLotRepository,
+                                pointsTransactionRepository,
+                                loyaltyTierRepository);
+                ResponseStatusException exception = assertThrows(
+                                ResponseStatusException.class,
+                                () -> service.clawbackPoints(accountId, purchaseId));
+                assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+                assertEquals("Invalid purchase ID", exception.getReason());
+        }
+
+        @Test
+        void clawbackPoints_throwsIfPurchaseIsForOtherAccount() {
+                final var accountId = "account-1";
+                final var otherAccountId = "account-2";
+                final var purchaseId = "invalid-purchase-id";
+                final var purchase = new Purchase(purchaseId, otherAccountId, 0, null);
+                when(purchaseRepository.findById(purchaseId)).thenReturn(Optional.of(purchase));
+                LoyaltyPointsService service = new LoyaltyPointsService(
+                                purchaseRepository,
+                                rewardRepository,
+                                pointsLotRepository,
+                                pointsTransactionRepository,
+                                loyaltyTierRepository);
+                ResponseStatusException exception = assertThrows(
+                                ResponseStatusException.class,
+                                () -> service.clawbackPoints(accountId, purchaseId));
+                assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+                assertEquals("Invalid purchase ID", exception.getReason());
+        }
+
+        @Test
+        void clawbackPoints_doesNotRecordTransactionIfPointsNotEarned() {
+                final var accountId = "account-1";
+                final var purchaseId = "purchase-id";
+                final var purchase = new Purchase(purchaseId, accountId, 100.0f, null);
+                when(purchaseRepository.findById(purchaseId)).thenReturn(Optional.of(purchase));
+                LoyaltyPointsService service = new LoyaltyPointsService(
+                                purchaseRepository,
+                                rewardRepository,
+                                pointsLotRepository,
+                                pointsTransactionRepository,
+                                loyaltyTierRepository);
+                service.clawbackPoints(accountId, purchaseId);
+                verify(pointsTransactionRepository, never()).save(any());
+        }
+
+        @Test
+        void clawbackPoints_doesNotRecordTranactionIfPointsAlreadyClawedBack() {
+                final var accountId = "account-1";
+                final var purchaseId = "purchase-id";
+                final var purchase = new Purchase(purchaseId, accountId, 100.0f, null);
+                when(purchaseRepository.findById(purchaseId)).thenReturn(Optional.of(purchase));
+                final var earnTx = new PointsTransaction(
+                                1L,
+                                TransactionType.EARN,
+                                accountId,
+                                purchaseId,
+                                100,
+                                Instant.now().minus(Duration.ofDays(30)));
+                final var clawbackTx = new PointsTransaction(
+                                2L,
+                                TransactionType.CLAWBACK,
+                                accountId,
+                                purchaseId,
+                                -100,
+                                Instant.now());
+                when(pointsTransactionRepository.findByPurchaseId(purchaseId)).thenReturn(List.of(earnTx, clawbackTx));
+                LoyaltyPointsService service = new LoyaltyPointsService(
+                                purchaseRepository,
+                                rewardRepository,
+                                pointsLotRepository,
+                                pointsTransactionRepository,
+                                loyaltyTierRepository);
+                service.clawbackPoints(accountId, purchaseId);
+                verify(pointsTransactionRepository, never()).save(any());
+        }
+
+        @Test
+        void clawbackPoints_recordsTransactionIfClawedBackSuccessfully() {
+                final var accountId = "account-1";
+                final var purchaseId = "purchase-id";
+                final var purchase = new Purchase(purchaseId, accountId, 100.0f,
+                                Instant.now().minus(Duration.ofDays(30)));
+                when(purchaseRepository.findById(purchaseId)).thenReturn(Optional.of(purchase));
+                final var earnTx = new PointsTransaction(
+                                1L,
+                                TransactionType.EARN,
+                                accountId,
+                                purchaseId,
+                                100,
+                                Instant.now().minus(Duration.ofDays(30)));
+                when(pointsTransactionRepository.findByPurchaseId(purchaseId)).thenReturn(List.of(earnTx));
+                final var pl = new PointsLot(1L, accountId, 100, Instant.now().plus(Duration.ofDays(30)));
+                when(pointsLotRepository.findSpendableLotsForAccount(eq(accountId), any(Instant.class)))
+                                .thenReturn(List.of(pl));
+                LoyaltyPointsService service = new LoyaltyPointsService(
+                                purchaseRepository,
+                                rewardRepository,
+                                pointsLotRepository,
+                                pointsTransactionRepository,
+                                loyaltyTierRepository);
+                service.clawbackPoints(accountId, purchaseId);
+                verify(pointsLotRepository).save(pl);
+                assertEquals(0, pl.getPointsRemaining());
+                ArgumentCaptor<PointsTransaction> captor = ArgumentCaptor.forClass(PointsTransaction.class);
+                verify(pointsTransactionRepository).save(captor.capture());
+                final var tx = captor.getValue();
+                assertEquals(TransactionType.CLAWBACK, tx.getTransactionType());
+                assertEquals(accountId, tx.getAccountId());
+                assertEquals(purchaseId, tx.getPurchaseId());
+                assertEquals(-100, tx.getPoints());
+        }
+
+        @Test
+        void clawbackPoints_doesNotClawBackExpiredPoints() {
+                final var accountId = "account-1";
+                final var purchaseId = "purchase-id";
+                final var purchase = new Purchase(purchaseId, accountId, 100.0f,
+                                Instant.now().minus(Duration.ofDays(30)));
+                when(purchaseRepository.findById(purchaseId)).thenReturn(Optional.of(purchase));
+                final var earnTx = new PointsTransaction(
+                                1L,
+                                TransactionType.EARN,
+                                accountId,
+                                purchaseId,
+                                100,
+                                Instant.now().minus(Duration.ofDays(30)));
+                when(pointsTransactionRepository.findByPurchaseId(purchaseId)).thenReturn(List.of(earnTx));
+                when(pointsLotRepository.findSpendableLotsForAccount(eq(accountId), any(Instant.class)))
+                                .thenReturn(List.of());
+                LoyaltyPointsService service = new LoyaltyPointsService(
+                                purchaseRepository,
+                                rewardRepository,
+                                pointsLotRepository,
+                                pointsTransactionRepository,
+                                loyaltyTierRepository);
+                service.clawbackPoints(accountId, purchaseId);
+                verify(pointsLotRepository, never()).save(any());
+                ArgumentCaptor<PointsTransaction> captor = ArgumentCaptor.forClass(PointsTransaction.class);
+                verify(pointsTransactionRepository).save(captor.capture());
+                final var tx = captor.getValue();
+                assertEquals(TransactionType.CLAWBACK, tx.getTransactionType());
+                assertEquals(accountId, tx.getAccountId());
+                assertEquals(purchaseId, tx.getPurchaseId());
+                assertEquals(-100, tx.getPoints());
         }
 }

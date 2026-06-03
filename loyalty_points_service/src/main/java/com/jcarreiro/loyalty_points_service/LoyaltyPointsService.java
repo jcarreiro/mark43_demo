@@ -7,6 +7,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.jcarreiro.loyalty_points_service.PointsTransaction.TransactionType;
+
 @Service
 public class LoyaltyPointsService {
     private final PurchaseRepository purchaseRepository;
@@ -25,6 +27,25 @@ public class LoyaltyPointsService {
         this.pointsLotRepository = pointsLotRepository;
         this.pointsTransactionRepository = pointsTransactionRepository;
         this.loyaltyTierRepository = loyaltyTierRepository;
+    }
+
+    private int getPointsForPurchase(float dollarAmt) {
+        return (int) dollarAmt;
+    }
+
+    private int spendPoints(String accountId, int pointsToSpend) {
+        var pointsNeeded = pointsToSpend;
+        var lots = pointsLotRepository.findSpendableLotsForAccount(accountId, Instant.now());
+        var iterator = lots.iterator();
+        while (iterator.hasNext() && pointsNeeded > 0) {
+            var pl = iterator.next();
+            int pointsInLot = pl.getPointsRemaining();
+            int pointsSpent = Math.min(pointsNeeded, pl.getPointsRemaining());
+            pl.setPointsRemaining(pointsInLot - pointsSpent);
+            pointsLotRepository.save(pl);
+            pointsNeeded -= pointsSpent;
+        }
+        return pointsNeeded;
     }
 
     /// Retrieves the current points balance for a customer's account.
@@ -95,7 +116,7 @@ public class LoyaltyPointsService {
         // spent, but for a real application, this may be more complex and could
         // involve looking up the conversion rate from a database or another
         // service.
-        int pointsEarned = purchase.getDollarAmount().intValue();
+        int pointsEarned = getPointsForPurchase(purchase.getDollarAmount());
 
         // Create a new lot for the new points.
         final var expiryTime = purchase.getTimestamp().plus(pointsValidDuration);
@@ -142,19 +163,7 @@ public class LoyaltyPointsService {
         }
 
         // Spend points from lots, in FIFO order.
-        int pointsNeeded = pointCost;
-        var lots = pointsLotRepository.findSpendableLotsForAccount(accountId, Instant.now());
-        var iterator = lots.iterator();
-        while (iterator.hasNext() && pointsNeeded > 0) {
-            // Spend either all the points left in the next lot, or the amount
-            // remaining from the reward cost, whichever is least.
-            var pl = iterator.next();
-            int pointsInLot = pl.getPointsRemaining();
-            int pointsSpent = Math.min(pointsInLot, pointsNeeded);
-            pl.setPointsRemaining(pointsInLot - pointsSpent);
-            pointsLotRepository.save(pl);
-            pointsNeeded -= pointsSpent;
-        }
+        int pointsNeeded = spendPoints(accountId, pointCost);
 
         // We should have had enough lots to pay the reward cost, since we
         // check the balance up front.
@@ -167,6 +176,50 @@ public class LoyaltyPointsService {
                 accountId,
                 null,
                 -pointCost,
+                Instant.now());
+        pointsTransactionRepository.save(tx);
+    }
+
+    /// Clawback points for a refunded purchase.
+    /// 
+    /// Remove reward points from a customer's account for a refunded purchase. We
+    /// remove points from unexpired lots in FIFO order; if there aren't enough
+    /// unexpired points left, then the user will be left with a balance of 0.
+    public void clawbackPoints(String accountId, String purchaseId) {
+        // Make sure the purchaseId is valid and corresponds to a purchase made
+        // by the given accountId.
+        Purchase purchase = purchaseRepository.findById(purchaseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid purchase ID"));
+        if (!purchase.getAccountId().equals(accountId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid purchase ID");
+        }
+
+        // Check that the points from the purchase were actually earned, and
+        // that they haven't already been clawed back.
+        final var txs = pointsTransactionRepository.findByPurchaseId(purchaseId);
+        if (txs.isEmpty()) {
+            // The points were never earned, so we don't need to claw them back.
+            return;
+        }
+
+        if (txs.stream().anyMatch(tx -> tx.getTransactionType() == TransactionType.CLAWBACK)) {
+            // The points for this purchase have already been clawed back.
+            return;
+        }
+
+        // Get the points to claw back.
+        final var pointsToClawBack = getPointsForPurchase(purchase.getDollarAmount());
+
+        // Update the lots to remove the points.
+        spendPoints(accountId, pointsToClawBack);
+
+        // Record a clawback transaction
+        final var tx = new PointsTransaction(
+                null,
+                TransactionType.CLAWBACK,
+                accountId,
+                purchaseId,
+                -pointsToClawBack,
                 Instant.now());
         pointsTransactionRepository.save(tx);
     }
