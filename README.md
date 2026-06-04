@@ -59,21 +59,21 @@ project in VS Code and use the _Java: Run Tests_ command.
 ### Code layout
 The demo application is composed of the following layers:
 
-- Controller
-  The controller defines API routes and connects them to the service object.
+#### Controller
+The controller defines API routes and connects them to the service object.
 
-- DTOs
-  Data Type Objects used to model request and response types.
+#### DTOs
+Data Type Objects used to model request and response types.
 
-- Service
-  The service object implements the application business logic, such as earning
-  and redeeming points. Logic such as the expiry time for points, the conversion
-  rate from dollar spend to points earned, etc. are located in this layer.
+#### Service
+The service object implements the application business logic, such as earning
+and redeeming points. Logic such as the expiry time for points, the conversion
+rate from dollar spend to points earned, etc. are located in this layer.
 
-- Entities/Repositories
-  Data access is primarily done via JPA, through a set of entity/repository
-  objects. Each domain object (for example, a customer purchase) is modeled as
-  an entity (Purchase.java) and an associated repository (PurchaseRepository.java).
+#### Entities/Repositories
+Data access is primarily done via JPA, through a set of entity/repository
+objects. Each domain object (for example, a customer purchase) is modeled as
+an entity (Purchase.java) and an associated repository (PurchaseRepository.java).
 
 ### Data model
 The most important tables in the data model are the tables used for tracking a
@@ -160,9 +160,9 @@ and loyalty tier information, respectively:
 - When points are clawed back, we intentionally reduce the points remaining in
   the customer's unexpired lots, in FIFO order, but we do not allow the balance
   to become negative. If the user doesn't have enough points remaining to repay
-  all the clawed back points, then there balance simply becomes 0. This 
+  all the clawed back points, then their balance simply becomes 0. This 
   simplifies the code somewhat (we never need to worry about negative balances)
-  but it does open up a possibility that a customer can spent more points then
+  but it does open up a possibility that a customer can spend more points then
   they've earned. For example, if a user makes a purchase, spends the reward
   points, and then refunds the purchase, their final balance will be 0. In the 
   future, if the same customer makes another purchase, they will be able to 
@@ -176,7 +176,7 @@ If I'd had more time, I would have added the following:
 - an improved CLI and/or web front end
 - added user accounts as an entity (to allow using usernames in API, map to 
   accountId on backend)
-- probably lots more stuff I'm not thining of... :)
+- probably lots more stuff I'm not thinking of... :)
 
 ## REST API
 
